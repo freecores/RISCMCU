@@ -1,3 +1,5 @@
+-- Refer to counter.asm and counter.lst in the asm directory
+
 width = 16;
 depth = 512;
 
