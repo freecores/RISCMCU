@@ -54,7 +54,7 @@ end v_pc;
 architecture pc of v_pc is
 constant vector2 : std_logic_vector(8 downto 0) := "000000001";
 constant vector4 : std_logic_vector(8 downto 0) := "000000010";
-signal pcb, stack0, stack1, stack2 : std_logic_vector(8 downto 0);
+signal pcb, stack0, stack1, stack2, stack3 : std_logic_vector(8 downto 0);
 begin
 
 process(clk, clrn)
@@ -65,6 +65,7 @@ begin
 		stack0 <= "000000000";
 		stack1 <= "000000000";
 		stack2 <= "000000000";
+		stack3 <= "000000000";
 	elsif clk'event and clk = '1' then
 		if en = '1' then
 			pcb <= pc;
@@ -88,9 +89,11 @@ begin
 				end if;
 				stack1 <= stack0;
 				stack2 <= stack1;
+				stack3 <= stack2;
 			elsif pull = '1' then
 				stack0 <= stack1;
 				stack1 <= stack2;
+				stack2 <= stack3;
 			end if;			
 		end if;	
 	end if;		
