@@ -1,0 +1,281 @@
+
+AVRASM ver. 1.30  GAME.ASM Sun Mar 17 14:05:31 2002
+
+
+          .include "riscmcu.inc"
+         
+         ;***** I/O Register Definitions
+         
+          .equ	SREG	=$3f
+          .equ	GIMSK	=$3b
+          .equ	TIMSK	=$39
+          .equ	TIFR	=$38
+          .equ	MCUCR	=$35
+          .equ	TCCR0	=$33
+          .equ	TCNT0	=$32
+         
+          .equ	PORTB	=$18
+          .equ	DDRB	=$17
+          .equ	PINB	=$16
+          .equ	PORTC	=$15
+          .equ	DDRC	=$14
+          .equ	PINC	=$13
+          .equ	PORTD	=$12
+          .equ	DDRD	=$11
+          .equ	PIND	=$10
+         
+         
+         ;***** Bit Definitions
+         
+          .equ	INT0	=6
+         
+          .equ	TOIE0	=1
+         
+          .equ	TOV0	=1
+         
+          .equ	ISC01	=1
+          .equ	ISC00	=0
+         
+          .equ	CS02	=2
+          .equ	CS01	=1
+          .equ	CS00	=0
+         
+          .def	ZP 	=r30
+         
+         
+          .def	temp = r16
+          .def	times = r17
+          .def	num = r18
+          .def	stack = r19
+          .def	counter = r20
+          .def	life = r22
+          .def	level = r23
+          .def	temp2 = r24
+         
+          .cseg
+000000 c002      	rjmp	reset
+000001 9518      	reti
+000002 9518      	reti
+         
+          reset:
+000003 e045      	ldi	counter,5
+         
+000004 ef0f      	ser	temp
+000005 bb07      	out	ddrb,temp	; Port B direction as OUTPUT
+000006 bb01      	out	ddrd,temp	; Port D direction as OUTPUT
+000007 bb05      	out	portc,temp
+000008 bb02      	out	portd,temp
+         	
+000009 e001      	ldi	temp,1
+00000a bf03      	out	tccr0,temp	; set clock as timer clock source
+00000b e00f      	ldi	temp,$0F	 
+00000c bb04      	out	ddrc,temp	; PinC[3..0] output, [7..4] input
+         
+          start:
+00000d e063      	ldi	life,3
+00000e e071      	ldi	level,1
+00000f 94e8      	clt			; T = 0, start with correct
+         
+000010 d04f      	rcall	getinput	; hit any key to start the game
+000011 d015      	rcall	showlife
+000012 bb78      	out	portB,level	; output level to display
+000013 d047      	rcall	holding		; release? 
+         
+          nextlevel:
+000014 d070      	rcall	delay		; wait a while before the game is started
+000015 d02c      	rcall	showled		; show the LEDs and save it in buffer
+000016 d037      nlife:	rcall	check		; get input and check
+000017 f026      	brts	wrong
+000018 d01a      	rcall	greenled
+000019 9573      	inc	level		; when win, level <- level + 1
+00001a bb78      	out	portB,level	; output level to display
+00001b cff8      	rjmp	nextlevel
+00001c d010      wrong:	rcall	redled
+00001d d067      	rcall	delay
+00001e 956a      	dec	life
+00001f d007      	rcall	showlife
+000020 bb78      	out	portb,level
+000021 d063      	rcall	delay
+000022 3060      	cpi	life,0
+000023 f349      	breq	start
+000024 d012      	rcall	playback
+000025 94e8      	clt
+000026 cfef      	rjmp	nlife
+         
+         
+         ;*******************************************
+         ; show life
+          showlife:
+000027 2f06      	mov	temp,life
+000028 6f00      	sbr	temp,$f0
+000029 bb08      	out	portb,temp
+00002a d05a      	rcall	delay
+00002b d059      	rcall	delay
+00002c 9508      	ret
+         
+         ;*******************************************
+         ; on red leds
+         
+          redled:
+00002d 2700      	clr	temp
+00002e bb05      	out	portc,temp
+00002f d055      	rcall	delay
+000030 ef0f      	ser	temp
+000031 bb05      	out	portc,temp
+000032 9508      	ret
+         
+         ;*******************************************
+         ; on green led
+         
+          greenled:
+000033 9897      	cbi	portd,7	
+000034 d050      	rcall	delay
+000035 9a97      	sbi	portd,7
+000036 9508      	ret
+         
+         
+         ;*******************************************
+         ; play back the last sequence when wrong
+         
+          playback:
+000037 d033      	rcall	init
+000038 9101      w10:	ld	temp,Z+
+000039 bb05      	out	portC,temp
+00003a d04a      	rcall	delay
+00003b ef0f      	ser	temp		; OFF
+00003c bb05      	out	portC,temp	
+00003d e041      	ldi	counter,1
+00003e d046      	rcall	delay
+00003f 951a      	dec	times
+000040 f7b9      	brne	w10
+000041 9508      	ret
+         	
+         ;*******************************************
+         ; Show sequence of LEDs (base on times), save in buffer
+         
+          showled:
+000042 d028      	rcall	init
+000043 d02a      snext:	rcall	random		; return in NUM
+000044 9321      	st	Z+,num
+000045 bb25      	out	portC,num	; display the LED
+000046 d03e      	rcall	delay
+000047 ef0f      	ser	temp		; OFF
+000048 bb05      	out	portC,temp	
+000049 e041      	ldi	counter,1
+00004a d03a      	rcall	delay
+00004b 951a      	dec	times
+00004c f7b1      	brne	snext
+00004d 9508      	ret
+         
+         
+         ;*******************************************
+         ; wait for input and check
+         ; return T = 0 when corrert, T = 1 when wrong
+         
+          check:
+00004e d01c      	rcall	init	
+          nextkey:
+00004f d00b      	rcall	holding
+000050 9478      	sei
+000051 d00e      	rcall	getinput	; return in NUM
+000052 94f8      	cli
+000053 9101      	ld	temp,Z+
+000054 1320      	cpse	num,temp
+000055 9468      	set			; Set T flag if one key is wrong
+000056 d004      	rcall	holding
+000057 d03d      	rcall	sdelay
+000058 951a      	dec	times
+000059 f7a9      	brne	nextkey
+00005a 9508      	ret
+         
+         ;*******************************************
+         ; still holding the key ?
+         
+          holding:
+00005b b303      	in	temp,pinc
+00005c 7f00      	cbr	temp,$0F
+00005d 3f00      	cpi	temp,$F0
+00005e f7e1      	brne	holding
+00005f 9508      	ret
+         
+         ;*******************************************
+         ; getinput
+         
+          getinput:
+000060 b323      g15:	in	num,pinc
+000061 7f20      	cbr	num,$0F	; clear lower nibble
+000062 3f20      	cpi	num,$F0
+000063 f3e1      	breq	g15
+000064 d030      	rcall	sdelay
+000065 b303      	in	temp,pinc
+000066 7f00      	cbr	temp,$0F
+000067 1702      	cp	temp,num
+000068 f7b9      	brne	g15
+000069 9522      	swap	num
+00006a 9508      	ret
+         	
+         ;*******************************************
+         ; 1. Load level to times
+         ; 2. ZP point to start of buffer
+         
+00006b 2f17      init:	mov	times,level	; times <- level
+00006c e6e2      	ldi	ZP,buffer	; ZP <- buffer
+00006d 9508      	ret
+         	
+         ;*******************************************
+         ; Generate Random Num, return in NUM
+         
+          random:
+00006e b722      	in	num,tcnt0
+00006f 3024      ran:	cpi	num,4
+000070 f010      	brlo	rnext
+000071 5024      	subi	num,4	
+000072 cffc      	rjmp	ran
+000073 3020      rnext:	cpi	num,0
+000074 f411      	brne	r10
+000075 e02e      	ldi	num,0b1110
+000076 c009      	rjmp	rend
+000077 3021      r10:	cpi	num,1
+000078 f411      	brne	r20
+000079 e02d      	ldi	num,0b1101
+00007a c005      	rjmp	rend
+00007b 3022      r20:	cpi	num,2
+00007c f411      	brne	r30
+00007d e02b      	ldi	num,0b1011
+00007e c001      	rjmp	rend
+00007f e027      r30:	ldi	num,0b0111
+000080 b702      rend:	in	temp,tcnt0
+000081 9507      	ror	temp
+000082 9507      	ror	temp
+000083 bf02      	out	tcnt0,temp
+000084 9508      	ret
+         
+         ;*******************************************	
+          delay:
+000085 2f3e      	mov	stack,ZP
+000086 e6e0      del:	ldi	ZP,count
+000087 8100      	ld	temp,Z
+000088 950a      	dec	temp
+000089 8300      	st	Z,temp
+00008a f7d9      	brne	del
+00008b e6e1      	ldi	ZP,count+1
+00008c 8100      	ld	temp,Z
+00008d 950a      	dec	temp
+00008e 8300      	st	Z,temp
+00008f f7b1      	brne	del
+000090 954a      	dec	counter
+000091 f7a1      	brne	del
+000092 e045      	ldi	counter,5
+000093 2fe3      	mov	ZP,stack
+000094 9508      	ret
+         
+          sdelay:
+000095 2700      	clr	temp
+000096 950a      sd5:	dec	temp
+000097 f7f1      	brne	sd5
+000098 9508      	ret
+         ;*******************************************
+          .dseg
+000060      count:	.byte	2
+000062      buffer:	.byte	20
+Assembly complete with no errors.
