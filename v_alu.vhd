@@ -85,7 +85,8 @@ signal sum, logic_out, right_out, dir_out, bldcbi_out : std_logic_vector(7 downt
 
 begin
 
--- Fetch Operand To Buffer ------------------------------------------
+-- Operand Fetch Unit --
+
 process(clrn, clk)
 begin
 	if clrn = '0' then
@@ -121,36 +122,39 @@ begin
 end process;
 
 
--- ALU START------------------------------------------------------------
-
+-- Execution Unit --
 
 cin <= c_flag when add = '1' and wcarry = '1' else
 		'0' when add = '1' and wcarry = '0' else
 		not c_flag when wcarry = '1' else
 		'1';
 
--- Adder, Logic, Shift Right, Direct, Bld, Cbisbi ---------------------------
 
+-- Adder-Subtracter
 adder1 : lpm_add_sub 
 	generic map(lpm_width => 8)
 	port map (dataa => a, datab => b, cin => cin, add_sub => add, result => sum, cout => cout, overflow => overflow);
 
+-- Logic Unit
 with logicsel select
 	logic_out <= a and b when 0, -- and, andi
 				a or b when 1, -- or, ori
 				a xor b when 2, -- eor
 				not a when 3; -- com
 
+-- Shifter
 right_out(6 downto 0) <= a(7 downto 1);
 with rightsel select
 	right_out(7) <= '0' when 0, -- lsr
 					c_flag when 1, -- ror
 					a(7) when 2; -- asr
 
+-- Direct Unit
 with dirsel select 
 	dir_out <= b when 0, -- ldi, mov
 				(a(3 downto 0) & a(7 downto 4)) when 1; -- swap
 
+-- Bit Loader
 process(bld, bitsel, a, t_flag, set)
 begin
 	for i in 0 to 7 loop
@@ -164,9 +168,7 @@ begin
 	end loop;
 end process;
 
-
--- Output correct result to Data Bus (C Bus) ------------------------
-
+-- Results to Data Bus
 process(add, subcp, logic, right, dir, bld, cbisbi, pass_a, sum, logic_out, right_out, dir_out, bldcbi_out, a)
 begin
 
@@ -197,16 +199,15 @@ begin
 	c <= bldcbi_out;
  end if;
 
- -- out
+ -- out, st z, st z+, st -z
  if pass_a = '1' then
 	c <= a;
  end if;
 
 end process;
----------------------------------------------------------------------------------
 
--- Perform Skip Test ----------------------------------------------------------
 
+-- Skip Evaluation Unit --
 process(cpse, skiptest, a, b, set, bitsel, c)
 begin
 
@@ -226,10 +227,8 @@ begin
 
  end if;
 end process;
---------------------------------------------------------------------------
 
--- Calculate Status Register's Flags -------------------------------------
-
+-- Flags Evaluation Unit --
 process(add, subcp, cout, right, a, logic, a, b, sum, logic_out, right_out, c, overflow, sr, bitsel)
 begin
 
@@ -292,7 +291,5 @@ begin
 end process;
 
 tosr <= sr;
-
-------------------------------------------------------------------------
 
 end alu;

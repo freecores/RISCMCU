@@ -102,7 +102,6 @@ type statetype is (exes, nop2s, nop1s, lds, sts, cbisbis, sbicss, sleeps);
 
 signal ibr : std_logic_vector(11 downto 0);
 signal state : statetype;
-
 signal one, neg, imm : std_logic;
 
 signal
@@ -130,19 +129,13 @@ signal rd_io, wr_io, break, irq, get_io, wr_ram_fast, branchtest, branch, jmp : 
 
 begin
 
--- Decoder Begin ------------------------------------------------
--- 
--- Decode 46 instructions (48 - NOP - WDR)
---
--- Combine cbi,sbi (cbisbi)  sbrc,sbrs (sbrcs)  sbic,sbis (sbic,sbis)
---
--- Generate C2A and C2B
---
-
+-- Instruction Decoder
+-- Decode 51 instructions generate 46 'm signals
+-- Combine brbcs+brbs (brbcs) cbi+sbi (cbisbi)  sbrc+sbrs (sbrcs)  sbic+sbis (sbics)
 
 process(ir, wr_reg, get_io, ibr)
 begin
--- 43 signal
+
 cpcm <= '0'; sbcm <= '0'; addm <= '0';
 cpsem <= '0'; cpm <= '0'; subm <= '0'; adcm <= '0';
 andm <= '0'; eorm <= '0'; orm <= '0'; movm <= '0';
@@ -232,6 +225,8 @@ case ir(15 downto 12) is
 	when others =>
 end case;
 
+
+-- Generate Fetch Stage Signals : C2A and C2B (C2A active also when fetch I/O)
 if ((ibr(7 downto 4) = ir(7 downto 4)) and wr_reg = '1') or get_io = '1' then
 	c2a <= '1';
 else
@@ -246,14 +241,8 @@ end if;
 
 end process;
 
--- Decoder End ------------------------------------------------------------
-
-
-
--- Helper Signal Begin ---------------------------------------------------
---
--- 8 : ibr, imm, wcarry, one, neg, logicsel, rightsel, dirsel
---
+-- Generate wcarry, logicsel, rightsel and dirsel
+-- Load IBR with IR when EN active
 process(clk,clrn)
 begin
 if clrn = '0' then
@@ -288,17 +277,9 @@ elsif clk'event and clk = '1' then
 	
 end if;
 end process;
--- Helper Signal End -----------------------------------------------------
 
 
--- Control Unit Begin ----------------------------------------------------
---
--- Main Signal : 17
--- wr_reg, pass_a, sren, rd_io, wr_io
--- add, subcp, logic, right, dir
--- rjmp, rcall, ret, brbc, brbs
--- bclr, bset 
---
+-- Finite State Machine
 
 irq <= (timerirq or extirq) and sr(7);
 break <= branch or skip or irq;
@@ -310,7 +291,6 @@ if clrn = '0' then
 
 	state <= exes;
 
-
  	en <= '1';	get_io <= '0';
 	pass_a <= '0'; wr_reg <= '0'; sren <= "0000000";
  	rd_io <= '0'; wr_io <= '0'; rd_ram <= '0'; wr_ram_fast <= '0';
@@ -320,7 +300,6 @@ if clrn = '0' then
  	bclr <= '0'; bset <= '0'; bld <= '0'; 
 	cpse <= '0'; skiptest <= '0'; 
  	cbisbi <= '0';
-
 	vec2 <= '0'; vec4 <= '0'; set_i <= '0';
 
 elsif clk'event and clk = '1' then
@@ -334,7 +313,6 @@ elsif clk'event and clk = '1' then
  	bclr <= '0'; bset <= '0'; bld <= '0'; 
 	cpse <= '0'; skiptest <= '0'; 
  	cbisbi <= '0';
-
 	vec2 <= '0'; vec4 <= '0'; set_i <= '0';
 
 	case state is
@@ -374,52 +352,44 @@ elsif clk'event and clk = '1' then
 					state <= sleeps;
 			 	end if;
 
+				-- PC signals
+		 		jmp  <= rjmpm or rcallm; -- encoded
+		 		push <= rcallm;
+		 		pull <= retm or retim; 
+
+				-- PC and IR signals
 				en <= not (cbisbim or sbicsm 
 						or stm or st_incm or st_decm or 
 						ldm or ld_incm or ld_decm); 
 
+				-- General Purpose Register File signals
 		 		wr_reg <= addm or adcm or incm 
-					or subm or subim or sbcm or sbcim or decm or negm 
-					or andm or andim or orm or orim or eorm or comm 
-					or lsrm or rorm or asrm 
-					or ldim or movm or swapm
-					or inm;			
-
- 		 		pass_a <= outm or stm or st_incm or st_decm;
-
-		 		wr_io <= outm;
-		 		rd_io <= inm or sbicsm or cbisbim;
-
-				ld_mar <= ldm or ld_incm or ld_decm or stm or st_incm or st_decm;
-				ld_mbr <= stm or st_incm or st_decm;
-
+						or subm or subim or sbcm or sbcim or decm or negm 
+						or andm or andim or orm or orim or eorm or comm 
+						or lsrm or rorm or asrm 
+						or ldim or movm or swapm
+						or inm;			
 				inc_zp <= ld_incm or st_incm;
 				dec_zp <= ld_decm or st_decm;
-		
+
+				-- ALU signals
 		 		add <= addm or adcm or incm;
 		 		subcp <= subm or subim or sbcm or sbcim or decm or negm 
 						or cpm or cpim or cpcm;
 		 		logic <= andm or andim or orm or orim or eorm or comm;
 		 		right <= lsrm or rorm or asrm;	 	
 		 		dir <= ldim or movm or swapm;
+		 		bld <= bldm;
+ 		 		pass_a <= outm or stm or st_incm or st_decm;
+				cpse <= cpsem;
+		 		skiptest <= sbrcsm;
 
+
+	
+				-- SR signals
  		 		bclr <= bclrm;
 		 		bset <= bsetm;
-		
-		 		bld <= bldm;
-
-				cpse <= cpsem;
-		 		skiptest <= sbrcsm or cpsem;
-
-				branchtest <= brbcsm;
-
-		 		jmp  <= rjmpm or rcallm;
-		 		push <= rcallm;
-		 		pull <= retm or retim; 
-
-				set_i <= retim;				
-
-				get_io <= cbisbim or sbicsm;
+				set_i <= retim;		
 
 				sren(0) <= addm or adcm 
 					 or subm or subim or sbcm or sbcim or cpm or cpcm or cpim or negm
@@ -436,13 +406,28 @@ elsif clk'event and clk = '1' then
 				sren(5) <= addm or adcm 
 					 or subm or subim or sbcm or sbcim or cpm or cpcm or cpim or negm;
 		
-				sren(6) <= bstm;		 
+				sren(6) <= bstm;		
 
+				-- Data RAM signals
+				ld_mar <= ldm or ld_incm or ld_decm or stm or st_incm or st_decm;
+				ld_mbr <= stm or st_incm or st_decm;	
+			
+				-- I/O decoder signals
+		 		wr_io <= outm;
+		 		rd_io <= inm or sbicsm or cbisbim;
 				if inm = '1' or outm = '1' then
 					ioaddr <= conv_integer(ir(10 downto 9) & ir(3 downto 0));
 				else
 					ioaddr <= conv_integer('0' & ir(7 downto 3));
 				end if;
+
+
+				-- Branch Evaluation Unit signal
+				branchtest <= brbcsm;
+
+
+				-- Fetch I/O, generate C2A
+				get_io <= cbisbim or sbicsm;
 
 			end if;		
 
@@ -488,6 +473,7 @@ elsif clk'event and clk = '1' then
 end if;
 end process;
 
+-- Generate Delayed WR_RAM signal to avoid writing to wrong address
 process(state, wr_ram_fast)
 begin
 	if state = exes then
@@ -498,7 +484,7 @@ begin
 end process;
 
 
--- branch evaluation --------------------------------------------
+-- Branch Evaluation Unit
 process(branchtest, sr, ibr) 
 begin
 	if branchtest = '1' and (sr(conv_integer(ibr(2 downto 0))) = not ibr(10)) then
@@ -508,40 +494,39 @@ begin
 	end if;
 end process;
 
--------------------------------------------------
 
--- IO address decoder --------------------------
+-- IO address decoder
 iodec : v_iodecoder
 	port map (ioaddr, rd_io, wr_io, rd_sreg, wr_sreg, rd_gimsk, wr_gimsk, rd_timsk, wr_timsk, rd_tifr, wr_tifr, rd_mcucr, wr_mcucr, rd_tccr0, wr_tccr0, rd_tcnt0, wr_tcnt0, rd_portb, wr_portb, rd_ddrb, wr_ddrb, rd_pinb, rd_portc, wr_portc, rd_ddrc, wr_ddrc, rd_pinc, rd_portd, wr_portd, rd_ddrd, wr_ddrd, rd_pind);
-----------------------------------------------------
+
 
 -- Intruction Buffer Register (IBR) to signals ------------------
 dest <= conv_integer(ibr(7 downto 4));
-
 srsel <= conv_integer(ibr(6 downto 4));
 set <= ibr(9);
 bitsel <= conv_integer(ibr(2 downto 0));
+offset <= 	ibr(8 downto 0) when jmp = '1' else
+			ibr(9) & ibr(9) & ibr(9 downto 3);
 
+
+-- Generate Fetch Stage Signals : ASEL and SEL
 imm <= subim or sbcim or cpim or andim or orim or ldim;
 one <= incm or decm;
 neg <= negm;
 
 asel <= 1 when neg = '1' and get_io = '0' else
 		0;
-
 bsel <= 1 when neg = '1' else
 		2 when imm = '1' else
 		3 when one = '1' else
 		0;
 
-offset <= 	ibr(8 downto 0) when jmp = '1' else
-			ibr(9) & ibr(9) & ibr(9 downto 3);
 
-addoffset <= branch or jmp;
-
-clr_i <= vec2 or vec4;
-clr_intf <= vec2;
-clr_tov0 <= vec4;
+-- Decode Control Signal
+addoffset <= branch or jmp; -- PC
+clr_i <= vec2 or vec4; -- PC
+clr_intf <= vec2; -- External Interrupt
+clr_tov0 <= vec4; -- Timer
 
 end controlunit;
 
