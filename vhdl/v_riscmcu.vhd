@@ -54,7 +54,7 @@ end v_riscmcu;
 
 architecture riscmcu of v_riscmcu is
 
-signal extpin : std_logic;
+signal ext_irq_pin, ext_timer_clk_pin : std_logic;
 
 signal clk, clrn, div2, div4, div8, div16 : std_logic;
 signal sr, reg_rd, reg_rr, c, addrbus: std_logic_vector(7 downto 0);
@@ -97,12 +97,14 @@ signal set : std_logic;
 signal asel : integer range 0 to 1;
 signal bsel : integer range 0 to 3;
 
+	-- Frequency Divider - Divide clock by 2(div2), 4(div4), 8(div8) and 16(div16)
 	component v_freqdiv
 	port (	clock : in std_logic;
 		div2, div4, div8, div16 : buffer std_logic
 	);
 	end component;
 
+	-- Program Counter (9 bit wide)
 	component v_pc
 	port (	offset : in std_logic_vector(8 downto 0);
 		en, addoffset, push, pull, vec2, vec4 : in std_logic;
@@ -111,12 +113,14 @@ signal bsel : integer range 0 to 3;
 	);
 	end component;
 
+	-- Program ROM (512 words)
 	component v_rom
 	port (	pc : in std_logic_vector(8 downto 0);
 		instruction : out std_logic_vector(15 downto 0)
 	);
 	end component;
 
+	-- Instruction Register (16 bit wide)
 	component v_ir
 	port (	instruction : in std_logic_vector(15 downto 0);
 		en, clk, clrn : in std_logic;
@@ -126,6 +130,7 @@ signal bsel : integer range 0 to 3;
 	);
 	end component;
 
+	-- Control Unit (with IO address decoder module inside)
 	component v_controlunit
 	port (	ir	: in std_logic_vector(15 downto 0);
 		sr : in std_logic_vector(7 downto 0);
@@ -177,6 +182,7 @@ signal bsel : integer range 0 to 3;
 	);
 	end component;
 
+	-- General Purpose Register (16 x 8bit)
 	component v_gpr
 	port (	c : in std_logic_vector(7 downto 0);		
 		wr_reg, inc_zp, dec_zp : in std_logic;
@@ -186,6 +192,7 @@ signal bsel : integer range 0 to 3;
 	);
 	end component;
 
+	-- ALU
 	component v_alu
 	port (	reg_rd, reg_rr, imm_value : in std_logic_vector(7 downto 0);
 		c2a, c2b : in std_logic;
@@ -212,6 +219,7 @@ signal bsel : integer range 0 to 3;
 	);
 	end component;
 
+	-- Status Register (8 bit wide, flags are ITHSVNZC)
 	component v_sr
 	port ( 	clk,clrn: in std_logic;
 			sren,tosr : in std_logic_vector(6 downto 0);
@@ -223,6 +231,7 @@ signal bsel : integer range 0 to 3;
 	);
 	end component;
 
+	-- Data RAM (128 bytes)
 	component v_ram
 	port (	addrbus : in std_logic_vector(7 downto 0);
 		rd_ram, wr_ram, ld_mar, ld_mbr : in std_logic;
@@ -231,6 +240,7 @@ signal bsel : integer range 0 to 3;
 	);
 	end component;
 
+	-- Standard 8-bit I/O Port module (all ports share this same module)
 	component v_port
 	port (	rd_port, wr_port, rd_ddr, wr_ddr, rd_pin : in std_logic;
 		clk, clrn : in std_logic;
@@ -239,6 +249,7 @@ signal bsel : integer range 0 to 3;
 	);
 	end component;
 
+	-- 8-bit Timer with overflow interrupt request, can drive by external clock source
 	component v_timer
 	port (	extpin, clr_tov0 : in std_logic;
 		rd_timsk, wr_timsk, rd_tifr, wr_tifr : in std_logic;
@@ -249,6 +260,7 @@ signal bsel : integer range 0 to 3;
 	);
 	end component;
 
+	-- External Interrupt
 	component v_extint
 	port (	clk, clrn, extpin, clr_intf : in std_logic;
 		rd_mcucr, wr_mcucr, rd_gimsk, wr_gimsk : in std_logic;
@@ -258,9 +270,8 @@ signal bsel : integer range 0 to 3;
 	end component;
 
 begin
-	
-	U_v_freqdiv: v_freqdiv
-		port map (clock, div2, div4, div8, div16);
+	--U_v_freqdiv: v_freqdiv
+	--	port map (clock, div2, div4, div8, div16);
 
 	U_v_pc: v_pc
 		port map (offset, en, addoffset, push, pull, vec2, vec4, clk, clrn, pc);
@@ -287,12 +298,12 @@ begin
 		port map (addrbus, rd_ram, wr_ram, ld_mar, ld_mbr, clk, clrn, c);
 
 	U_v_timer: v_timer
-		port map (extpin, clr_tov0, rd_timsk, wr_timsk, rd_tifr, wr_tifr, rd_tccr0, wr_tccr0, rd_tcnt0, wr_tcnt0, clk, clrn, c, timerirq);
+		port map (ext_timer_clk_pin, clr_tov0, rd_timsk, wr_timsk, rd_tifr, wr_tifr, rd_tccr0, wr_tccr0, rd_tcnt0, wr_tcnt0, clk, clrn, c, timerirq);
 
 	U_v_extint: v_extint
-		port map (clk, clrn, extpin, clr_intf, rd_mcucr, wr_mcucr, rd_gimsk, wr_gimsk, extirq, c);
+		port map (clk, clrn, ext_irq_pin, clr_intf, rd_mcucr, wr_mcucr, rd_gimsk, wr_gimsk, extirq, c);
 
-
+	-- The same module v_port is used by 3 I/O ports, just the signals are different
 	U_v_portB: v_port
 		port map (rd_portb, wr_portb, rd_ddrb, wr_ddrb, rd_pinb, clk, clrn, c, pinb);
 
@@ -302,13 +313,27 @@ begin
 	U_v_portD: v_port
 		port map (rd_portd, wr_portd, rd_ddrd, wr_ddrd, rd_pind, clk, clrn, c, pind);
 
-	extpin <= pind(7);
+	-- Global reset, it resets ALL flip-flops and registers to the initial state (normally gnd)
 	clrn <= reset;
-	clk <= div4;	
+	
 	vcc <= '1';
 	gnd <= '0';
 	t_flag <= sr(6);
 	c_flag <= sr(0);
+	
+	-- These are the external interrupt request pin and external timer clock source pin
+	-- They share pins with the I/O ports
+	-- TIPS: You can use any of the 24 I/O pins, I use pind(7) for my applications
+	ext_irq_pin <= pind(2);
+	ext_timer_clk_pin <= pind(4);
+	
+	-- When I use the UP1 board, the on-board 25 MHz clock is too fast and
+	-- I need to divide it by 4 so that the MCU can run
+	-- For waveform simulation, it does not require division (clk <= clock)
+	-- TIPS: To have division, uncomment v_freqdiv module instantation on top of the page and 
+	--       assign clk with div2, div4, div8 or div16
+	clk <= clock;
+
 	
 end riscmcu;
 
