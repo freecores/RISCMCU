@@ -1,0 +1,114 @@
+
+AVRASM ver. 1.30  COUNTER.ASM Sun Jul 07 15:58:37 2002
+
+
+         ; This program is for simulation purpose
+         ; It demo how the MCU output 3, 2 and 1 to each port (Port B, Port C and Port D)
+         ; There are 3 approaches used in accomplishing the above task
+         
+          .include "riscmcu.inc"
+         
+         ;***** I/O Register Definitions
+         
+          .equ	SREG	=$3f
+          .equ	GIMSK	=$3b
+          .equ	TIMSK	=$39
+          .equ	TIFR	=$38
+          .equ	MCUCR	=$35
+          .equ	TCCR0	=$33
+          .equ	TCNT0	=$32
+         
+          .equ	PORTB	=$18
+          .equ	DDRB	=$17
+          .equ	PINB	=$16
+          .equ	PORTC	=$15
+          .equ	DDRC	=$14
+          .equ	PINC	=$13
+          .equ	PORTD	=$12
+          .equ	DDRD	=$11
+          .equ	PIND	=$10
+         
+         
+         ;***** Bit Definitions
+         
+          .equ	INT0	=6
+         
+          .equ	TOIE0	=1
+         
+          .equ	TOV0	=1
+         
+          .equ	ISC01	=1
+          .equ	ISC00	=0
+         
+          .equ	CS02	=2
+          .equ	CS01	=1
+          .equ	CS00	=0
+         
+          .def	ZP 	=r30
+         
+         
+          .def	B = r16
+          .def	C = r17
+          .def	D = r18
+          .def	TEMP = r19
+         
+         
+         
+000000 c002      	rjmp	reset		; reset vector
+000001 9508      	ret			; external interrupt vertor(not use)
+000002 9508      	ret			; timer overflow interrupt vertor (not use)
+         
+         
+          reset:
+000003 2733      	clr	TEMP		; r19 = 00
+000004 9530      	com	TEMP		; r19 = FF
+000005 bb37      	out	DDRB,TEMP	; set all Port B pins as output
+000006 bb34      	out	DDRC,TEMP	; set all Port C pins as output
+000007 bb31      	out	DDRD,TEMP	; set all Port D pins as output
+         
+         
+         
+         ; Approach 1, output to Port B
+         
+000008 e003      	ldi	B,3		; r16 = 03
+000009 bb08      again1:	out	PORTB,B		; Port B now output 03
+00000a 950a      	dec	B		; r16 = r16 - 1
+00000b 3000      	cpi	B,0		; if r16 = 0,
+00000c f7e1      	brne	again1		;   branch to again1
+         				
+         
+         
+         ; Approach 2, output to Port C
+         
+00000d 2733      	clr	TEMP		; r19 = 00
+00000e 9513      	inc	C		; r17 = 01
+00000f 9513      	inc	C		; r17 = 02
+000010 9513      	inc	C		; r17 = 03
+000011 bb15      again2:	out	PORTC,C		; Port C now output 03
+000012 5011      	subi	C,1		; r17 = r17 - 1
+000013 1313      	cpse	C,TEMP		; if r17 != r19 (means if r17 != 0),
+000014 cffc      	rjmp	again2		;    branch to again2
+         				
+         
+         
+         ; Approach 3, output to Port D
+         
+000015 2722      	clr	D		; r18 = 00
+000016 5f2d      	subi	D,-3		; r18 = r18 - (-3) = 03
+000017 bb22      again3:	out	PORTD,D		; Port D now output 03
+000018 952a      	dec	D		; r18 = r18 -1
+000019 b73f      	in	TEMP,SREG	; transfer the value of SR to R19
+00001a ff31      	sbrs	TEMP,1		; if bit 1 in R19 (the Z-flag) is set, skip the next instruction
+00001b cffb      	rjmp	again3		;    else branch to again3
+         				
+         
+         
+00001c cfff      end:	rjmp	end		; Branch Forever
+00001d 9478      	sei			; (Set I-Bit in SR) This 2 instructions won't execute 
+00001e 9468      	set			; (Set T-Bit in SR)   even they are fetched to the IR
+         	
+         
+         
+         
+
+Assembly complete with no errors.
